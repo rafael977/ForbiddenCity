@@ -61,13 +61,17 @@ def parse_member_page(url, id):
     age = age_gender_search.group('age')
     gender = age_gender_search.group('gender')
     # retrieve travel style
-    travel_style = []
+    travel_styles = []
+    for node in bs.find_all('div', class_='tagBubble unclickable'):
+        travel_styles.append(node.contents[1].strip())
 
 
     print('''Name: {},
 Since: {},
 Age: {},
-Gender: {}'''.format(name, since, age, gender))
+Gender: {},
+Travel Style: [{}]'''.format(name, since, age, gender, str.join(', ', travel_styles)))
 
 # parse_page('https://www.tripadvisor.com.sg/Attraction_Review-g294212-d319086-Reviews-Forbidden_City_The_Palace_Museum-Beijing.html')
 parse_member_page('https://www.tripadvisor.com.sg/members/arcmed72', 1)
+parse_member_page('https://www.tripadvisor.com.sg/members/JodyBAdelaide', 1)
