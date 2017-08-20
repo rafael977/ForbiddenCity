@@ -33,10 +33,20 @@ def parse_page(url):
         review_quotes = review.find('span', class_='noQuotes').string
         print('Quote: ' + review_quotes)
 
+        rating_text = review.find('div', class_='rating reviewItemInline').span['class']
+        rating = {
+            'ui_bubble_rating bubble_10': 10,
+            'ui_bubble_rating bubble_20': 20,
+            'ui_bubble_rating bubble_30': 30,
+            'ui_bubble_rating bubble_40': 40,
+            'ui_bubble_rating bubble_50': 50
+        }[rating_text]
+
         review = {
             '_id': review_id,
             'member_id': member_id,
-            'review': review_quotes
+            'review': review_quotes,
+            'rating': rating
         }
 
         overlay_page_url = overlay_page_base_url.format(member_id, review_id)
@@ -64,13 +74,28 @@ def parse_member_page(url, id):
     travel_styles = []
     for node in bs.find_all('div', class_='tagBubble unclickable'):
         travel_styles.append(node.contents[1].strip())
+    # retieve contribution
+    contribs = []
+    contrib_nodes = bs.find('div', class_='modules-membercenter-content-summary').find_all('a', class_='content-link')
+    for c in contrib_nodes:
+        key = c['name']
+        value = c.string.split(' ')[0]
+        contribs.append({key:value})
+    # retrieve total points
+    total_points = int(bs.find('div', class_='points_info tripcollectiveinfo').find('div', class_='points').string.strip().replace(',', ''))
 
-
+    parse_member_reviews(bs)
     print('''Name: {},
 Since: {},
 Age: {},
 Gender: {},
-Travel Style: [{}]'''.format(name, since, age, gender, str.join(', ', travel_styles)))
+Travel Style: {},
+Contributions: {},
+Total Points: {}'''.format(name, since, age, gender, travel_styles, contribs, total_points))
+
+def parse_member_reviews(bs):
+    
+    pass
 
 # parse_page('https://www.tripadvisor.com.sg/Attraction_Review-g294212-d319086-Reviews-Forbidden_City_The_Palace_Museum-Beijing.html')
 parse_member_page('https://www.tripadvisor.com.sg/members/arcmed72', 1)
