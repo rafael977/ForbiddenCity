@@ -2,6 +2,8 @@
 import requests as rq
 from bs4 import BeautifulSoup
 import re
+from ReviewHandler import ReviewHandler
+from DbHandler import DbHandler
 
 host_uri = 'https://www.tripadvisor.com.sg'
 main_page_url = 'https://www.tripadvisor.com.sg/Attraction_Review-g294212-d319086-Reviews-Forbidden_City_The_Palace_Museum-Beijing.html'
@@ -25,40 +27,20 @@ def parse_page(url):
     review_container = bs.find_all('div', class_='review-container')
     for review in review_container:
         member_info = review.find('div', class_='memberOverlayLink')['id'].split('-')
-        member_id = member_info[0].split('_')[1]
+        member_uid = member_info[0].split('_')[1]
         review_id = member_info[1].split('_')[1]
-        print('---Processing review id: ' + review_id + '---')
-        print('Member id: ' + member_id)
+        print('--- Processing Member uid: ' + member_uid + ' ---')
 
-        review_quotes = review.find('span', class_='noQuotes').string
-        print('Quote: ' + review_quotes)
-
-        rating_text = review.find('div', class_='rating reviewItemInline').span['class']
-        rating = {
-            'ui_bubble_rating bubble_10': 10,
-            'ui_bubble_rating bubble_20': 20,
-            'ui_bubble_rating bubble_30': 30,
-            'ui_bubble_rating bubble_40': 40,
-            'ui_bubble_rating bubble_50': 50
-        }[rating_text]
-
-        review = {
-            '_id': review_id,
-            'member_id': member_id,
-            'review': review_quotes,
-            'rating': rating
-        }
-
-        overlay_page_url = overlay_page_base_url.format(member_id, review_id)
+        overlay_page_url = overlay_page_base_url.format(member_uid, review_id)
         overlay_page_html = rq.get(overlay_page_url).text
         bs_overlay = BeautifulSoup(overlay_page_html, 'html.parser')
         member_page_url = host_uri + bs_overlay.find('div', class_='memberOverlayRedesign g10n').a['href']
         print('Member page url: ' + member_page_url)
-        parse_member_page(member_page_url, member_id)
+        parse_member_page(member_page_url, member_uid)
 
         print('---------------------------------------------\n')
 
-def parse_member_page(url, id):
+def parse_member_page(url, uid):
     member_page_html = rq.get(url).text
     bs = BeautifulSoup(member_page_html,'html.parser')
 
@@ -70,6 +52,8 @@ def parse_member_page(url, id):
     age_gender_search = age_gender_regex.search(age_gender)
     age = age_gender_search.group('age')
     gender = age_gender_search.group('gender')
+    hometown = bs.find('div', class_='hometown').p.string.strip()
+
     # retrieve travel style
     travel_styles = []
     for node in bs.find_all('div', class_='tagBubble unclickable'):
@@ -84,19 +68,40 @@ def parse_member_page(url, id):
     # retrieve total points
     total_points = int(bs.find('div', class_='points_info tripcollectiveinfo').find('div', class_='points').string.strip().replace(',', ''))
 
-    parse_member_reviews(bs)
-    print('''Name: {},
-Since: {},
-Age: {},
-Gender: {},
-Travel Style: {},
-Contributions: {},
-Total Points: {}'''.format(name, since, age, gender, travel_styles, contribs, total_points))
+    member = {
+        '_id': uid,
+        'name': name,
+        'since': since,
+        'age': age,
+        'gender': gender,
+        'hometown': hometown,
+        'travel_styles': travel_styles,
+        'contributes': contribs,
+        'total_points': total_points
+    }
+    print("Member info: ", member)
 
-def parse_member_reviews(bs):
-    
-    pass
+    # retrieve member ID and review pages
+    pattern = re.compile(r'\"memberId:(?P<memberId>[^\"]+)\"', re.IGNORECASE | re.MULTILINE)
+    script = bs.find('script', text=pattern)
+    if script:
+        match = pattern.search(script.string)
+        if match:
+            member_id = match.group('memberId')
+    # print(member_id)
 
-# parse_page('https://www.tripadvisor.com.sg/Attraction_Review-g294212-d319086-Reviews-Forbidden_City_The_Palace_Museum-Beijing.html')
-parse_member_page('https://www.tripadvisor.com.sg/members/arcmed72', 1)
-parse_member_page('https://www.tripadvisor.com.sg/members/JodyBAdelaide', 1)
+    num_pages = int(bs.find('div', class_='cs-pagination-bar-inner').contents[-1].string.strip())
+    # print(num_pages)
+
+    rh = ReviewHandler (url, num_pages, member_id, uid)
+    reviews, places = rh.get_data()
+
+    dh = DbHandler()
+    dh.insert_places(places)
+    dh.insert_reviews(reviews)
+    dh.insert_member(member)
+
+
+parse_page('https://www.tripadvisor.com.sg/Attraction_Review-g294212-d319086-Reviews-Forbidden_City_The_Palace_Museum-Beijing.html')
+# parse_member_page('https://www.tripadvisor.com.sg/members/arcmed72', 1)
+# parse_member_page('https://www.tripadvisor.com.sg/members/JodyBAdelaide', 2)
