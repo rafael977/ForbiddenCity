@@ -93,7 +93,15 @@ def parse_member_page(url, uid):
     num_pages = int(bs.find('div', class_='cs-pagination-bar-inner').contents[-1].string.strip())
     # print(num_pages)
 
-    rh = ReviewHandler (url, num_pages, member_id, uid)
+    # get token
+    pattern = re.compile(r"'token': \"(?P<token>[^\"]+)\"", re.IGNORECASE | re.MULTILINE)
+    script = bs.find('script', text=pattern)
+    if script:
+        match = pattern.search(script.string)
+        if match:
+            token = match.group('token')
+
+    rh = ReviewHandler (url, num_pages, member_id, uid, token)
     reviews, places = rh.get_data()
 
     dh = DbHandler()

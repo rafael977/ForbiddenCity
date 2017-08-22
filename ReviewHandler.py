@@ -5,12 +5,13 @@ import json
 
 class ReviewHandler:
     api_url = 'https://www.tripadvisor.com.sg/ModuleAjax?'
-    form_data_template = 'token=TNI1625!ACRMVNoCGQVubq4kIoVubP0NJHpDZcQSjo0UkPs8wdTh0WkbkaHUryiUkkvEeTyuuCn/AP2CwHpzcYblKCxbMFDLEodBkj8dNCZYRuGi0aXaHWN97qn2GnzYfP47zIetLRm+rmfX/O7ZF3Oz5sYhuW/s0HYhucdB9Ajcht/foRch&authenticator=DEFAULT&actions=[{{"name":"FETCH","resource":"modules.membercenter.model.ContentStreamComposite","params":{{"offset":{offset},"limit":50,"page":"PROFILE","memberId":"{memberId}"}},"id":"clientaction739"}}]&version=5'
-
-    def __init__(self, referrer_url, num_pages, member_id, member_uid):
+    form_data_template = 'token={token}&authenticator=DEFAULT&actions=[{{"name":"FETCH","resource":"modules.membercenter.model.ContentStreamComposite","params":{{"offset":{offset},"limit":50,"page":"PROFILE","memberId":"{memberId}"}},"id":"clientaction739"}}]&version=5'
+    
+    def __init__(self, referrer_url, num_pages, member_id, member_uid, token):
         self.num_pages = num_pages
         self.member_id = member_id
         self.member_uid = member_uid
+        self.token = token
         self.header = {
             'Content-type': 'application/x-www-form-urlencoded',
             'DNT': '1',
@@ -21,7 +22,7 @@ class ReviewHandler:
     
     def get_data(self):
         for i in range(0, self.num_pages):
-            data = self.form_data_template.format(offset = i * 50, memberId = self.member_id)
+            data = self.form_data_template.format(token = self.token, offset = i * 50, memberId = self.member_id)
             # print('Header:', self.header, '\n', 'Data:', data)
             
             r = rq.post(self.api_url, headers = self.header, data=data)
@@ -54,3 +55,7 @@ class ReviewHandler:
                         places.append(location_item)
 
             return reviews, places
+
+# rh = ReviewHandler('https://www.tripadvisor.com.sg/members/TipperNC', 1, 'rbpjt2soKDc=', 'uid123', 'TNI1625!ABnh9lnogA/G9Wt6q7FACiVQ8ipv8KZdP635H2mbMYfmKcZ6lfChF/eI9va3djotfWrK/xEyswo1pO3E74inoDuT1DzbFt4sIiaoJt7o72VQeZy/++s0sH83oXwNEJ2aU7dCPYgWoDUvVo46ZMNKGrvgfgTTVGsG6HBWHHhx5SiF')
+# reviews, places = rh.get_data()
+# print('Reviews: ', reviews, '\n', 'Places: ', places)
