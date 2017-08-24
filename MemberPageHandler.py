@@ -39,8 +39,8 @@ class MemberPageHandler:
                 member_page_url = self.host_uri + bs_overlay.find('div', class_='memberOverlayRedesign g10n').a['href']
                 print('Member page url: ' + member_page_url)
                 self.parse_member_page(member_page_url, member_uid)
-            except:
-                print('error')
+            except Exception as e:
+                print(e)
 
             print('---------------------------------------------\n')
 

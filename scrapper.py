@@ -18,8 +18,8 @@ while members.count() > 0: # loop until all member processed
             dbh.insert_reviews(reviews)
 
             dbh.set_member_processed(member['_id'])
-        except:
-            print('error')
+        except Exception as e:
+            print(e)
         print('-----------------------------------------------')
 
     members = dbh.get_all_not_processed_member()
