@@ -1,76 +1,101 @@
 # pylint: skip-file
-from selenium import webdriver
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
+import requests as rq
+import json
 from bs4 import BeautifulSoup
+import re
 
 class ReviewHandler:
-    location_category_mapping = {
-        'sprite-feedHotel':'hotel',
-        'sprite-feedAttraction':'attraction',
-        'sprite-feedRestaurant': 'restaurant'
+    cookie_ping_url = 'https://www.tripadvisor.com.sg/CookiePingback'
+    data_url = 'https://www.tripadvisor.com.sg/ModuleAjax'
+    headers = {
+        'accept': "text/javascript, text/html, application/xml, text/xml, */*",
+        'origin': "https://www.tripadvisor.com.sg",
+        'x-requested-with': "XMLHttpRequest",
+        'user-agent': "Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.101 Safari/537.36",
+        'content-type': "application/x-www-form-urlencoded; charset=UTF-8",
+        'dnt': "1",
+        'accept-encoding': "gzip, deflate, br",
+        'accept-language': "en-SG,en;q=0.8,zh-CN;q=0.6,zh;q=0.4,en-US;q=0.2,zh-TW;q=0.2"
     }
-    review_rating_mapping = {
-        'bubble_1': 1,
-        'bubble_2': 2,
-        'bubble_3': 3,
-        'bubble_4': 4,
-        'bubble_5': 5
+    action = '[{{"name":"FETCH","resource":"modules.membercenter.model.ContentStreamComposite","params":{{"offset":{offset},"limit":50,"page":"PROFILE","memberId":"{memberId}"}},"id":"clientaction739"}}]'
+    data = {
+        'actions': "",
+        'authenticator':'DEFAULT',
+        'token': "",
+        'version':5
     }
-
-    def __init__(self, url, member_uid):
+    
+    def __init__(self, member_page_url, member_uid):
+        self.session = rq.session()
+        self.session.headers = self.headers
+        self.member_page_url = member_page_url
         self.member_uid = member_uid
-        self.driver = webdriver.Chrome('driver\chromedriver.exe')
-        self.driver.get(url)
-        self.wait = WebDriverWait(self.driver, 30)
 
-    def get_data(self):
-        reviews = []
-        locations = []
-        page = self.driver.page_source
-        page_reviews, page_locations = self.parse_page(page, self.member_uid)
-        reviews.extend(page_reviews)
-        locations.extend(page_locations)
-        
-        button = self.driver.find_element_by_id('cs-paginate-next')
+    
+    def get_reviews(self):
+        page = self.session.get(self.member_page_url)
 
-        while 'disabled' not in button.get_attribute('class'):
-            self.driver.execute_script('return document.getElementsByClassName("cs-content-container")[0].remove();')        
-            button.click()
-            self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'cs-content-container')))
+        bs = BeautifulSoup(page.text, 'html.parser')
+        # retrieve member ID and review pages
+        pattern = re.compile(r'\"memberId:(?P<memberId>[^\"]+)\"', re.IGNORECASE | re.MULTILINE)
+        script = bs.find('script', text=pattern)
+        if script:
+            match = pattern.search(script.string)
+            if match:
+                member_id = match.group('memberId')
+        # retrieve token
+        pattern = re.compile(r"'token': \"(?P<token>[^\"]+)\"", re.IGNORECASE | re.MULTILINE)
+        script = bs.find('script', text=pattern)
+        if script:
+            match = pattern.search(script.string)
+            if match:
+                token = match.group('token')
+        # set cookie
+        rq.utils.add_dict_to_cookiejar(self.session.cookies, {'roybatty': token})
+        self.session.post(self.cookie_ping_url, params = {"early":"true"}, cookies = self.session.cookies)
+        # print(self.session.cookies)
+        # retrieve number of pages
+        num_pages = int(bs.find('div', class_='cs-pagination-bar-inner').contents[-1].string.strip())
 
-            page = self.driver.page_source
-            page_reviews, page_locations = self.parse_page(page, self.member_uid)
-            reviews.extend(page_reviews)
-            locations.extend(page_locations)
-
-            button = self.driver.find_element_by_id('cs-paginate-next')
+        for i in range(0, num_pages):
+            self.data['actions'] = self.action.format(offset= i * 50, memberId = member_id)
+            self.data['token'] = token
+            # print(self.data)
             
-        print(reviews, locations)        
-        self.driver.close()
-        return reviews, locations
+            r = self.session.post(self.data_url, data=self.data)
+            print(r.text)
+            reviews = []
+            places = []
+            if r.json():
+                r_data = r.json()
 
-    def parse_page(self, page, member_uid):
-        bs = BeautifulSoup(page, 'html.parser')
-        all_reviews = bs.find_all('li', class_='cs-review')
-        reviews = []
-        locations = []
-        for review in all_reviews:
-            location = review.find('div', class_='cs-review-location').a.string.strip()
-            if 'Beijing' in location:
-                reviews.append({
-                    'member_id': member_uid,
-                    'location_id': location,
-                    'review': review.find('a', class_='cs-review-title').string.strip(),
-                    'rating': self.review_rating_mapping[review.find('div', class_='cs-review-rating').span['class'][1]]
-                })
-                locations.append({
-                    '_id': location,
-                    'location': location,
-                    'category': self.location_category_mapping[review.find('div', class_='cs-type-hint')['class'][1]]
-                })
-        return reviews, locations
+                review_data = r_data['store']['modules.unimplemented.entity.AnnotatedItem']
+                location_data = r_data['store']['modules.unimplemented.entity.JSONLocation']
 
-# rh = ReviewHandler('https://www.tripadvisor.com.sg/members/TipperNC', 'uid123')
-# rh.get_data()
+                for review_key in review_data.keys():
+                    review = review_data[review_key]
+                    location_key = str(review['locationId'])
+                    if location_key in location_data.keys():
+                        location = location_data[location_key]
+                        if location['city'] == 'Beijing':
+                            review_item = {
+                                '_id': str(review['id']),
+                                'member_id': self.member_uid,
+                                'location_id': location_key,
+                                'review': review['title'],
+                                'rating': review['rating'],
+                                'date': review['formattedDate']
+                            }
+                            location_item = {
+                                '_id': str(location['id']),
+                                'place': location['location_string'],
+                                'category': location['category']['name']
+                            }
+                            reviews.append(review_item)
+                            places.append(location_item)
+
+            return reviews, places
+
+rh = ReviewHandler('https://www.tripadvisor.com.sg/members/katak27', 'uid')
+reviews, places = rh.get_reviews()
+print('Reviews: ', reviews, '\n', 'Places: ', places)

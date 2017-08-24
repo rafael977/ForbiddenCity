@@ -22,3 +22,8 @@ class DbHandler:
         for place in places:
             self.place_collection.save(place)
 
+    def get_all_not_processed_member(self):
+        return self.member_collection.find({'is_processed': False})
+
+    def set_member_processed(self, member_id):
+        self.member_collection.update({'_id':member_id}, {'$set':{'is_processed':True}})
